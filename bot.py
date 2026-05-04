@@ -9,6 +9,7 @@ import subprocess
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
+from discord import app_commands
 import sys
 import json
 import traceback
@@ -77,6 +78,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     log(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
     log("📡 Listening for voice messages...")
 
@@ -231,13 +233,14 @@ async def transcribe_and_reply(message, attachment):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-@bot.command(name="ping")
+@bot.hybrid_command(name="ping", description="Check if the bot is alive")
 async def ping(ctx):
     await ctx.send("pong!")
     log("🏓 Pinged!")
 
 
-@bot.command(name="dlvoice")
+@bot.hybrid_command(name="dlvoice", description="Download a voice message file from a Discord message link")
+@app_commands.describe(link="Full Discord message link (right-click message → Copy Message Link)")
 async def dlvoice(ctx, link: str):
     """Download a voice message file from a Discord message link.
     Usage: !dlvoice https://discord.com/channels/@me/channel_id/message_id
