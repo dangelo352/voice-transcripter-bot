@@ -237,6 +237,82 @@ async def ping(ctx):
     log("🏓 Pinged!")
 
 
+@bot.command(name="dlvoice")
+async def dlvoice(ctx, link: str):
+    """Download a voice message file from a Discord message link.
+    Usage: !dlvoice https://discord.com/channels/@me/channel_id/message_id
+    """
+    log(f"📥 dlvoice requested by {ctx.author}: {link}")
+
+    # Parse Discord message link
+    # Format: https://discord.com/channels/guild_id/@me/channel_id/message_id
+    try:
+        parts = link.strip().split("/")
+        # Find the channel_id and message_id at the end
+        message_id = int(parts[-1])
+        channel_id = int(parts[-2])
+    except (ValueError, IndexError):
+        await ctx.reply("❌ Invalid Discord message link. Format: `https://discord.com/channels/.../.../message_id`")
+        return
+
+    # Fetch the channel
+    channel = bot.get_channel(channel_id)
+    if channel is None:
+        log(f"   Channel {channel_id} not in cache, trying to fetch...")
+        try:
+            channel = await bot.fetch_channel(channel_id)
+        except Exception as e:
+            log(f"   Failed to fetch channel: {e}")
+            await ctx.reply("❌ Couldn't find that channel. Is the bot in that server/DM?")
+            return
+
+    # Fetch the message
+    try:
+        msg = await channel.fetch_message(message_id)
+    except discord.Forbidden:
+        await ctx.reply("❌ Bot doesn't have permission to read messages in that channel.")
+        return
+    except discord.NotFound:
+        await ctx.reply("❌ Message not found — link may be wrong or message was deleted.")
+        return
+    except Exception as e:
+        log(f"   Fetch error: {e}")
+        await ctx.reply(f"❌ Error fetching message: {e}")
+        return
+
+    log(f"   Fetched message from {msg.author}, {len(msg.attachments)} attachments")
+
+    # Find the first voice/audio attachment
+    voice_att = None
+    for att in msg.attachments:
+        ct = (att.content_type or "").lower()
+        if ct.startswith("audio/") or att.filename.lower().endswith((".ogg", ".mp3", ".wav", ".m4a")):
+            voice_att = att
+            break
+
+    if voice_att is None:
+        await ctx.reply("❌ No voice/audio attachment found in that message.")
+        return
+
+    # Download and send
+    tmp_path = tempfile.mktemp(suffix=f"-{voice_att.filename}")
+    try:
+        await voice_att.save(tmp_path)
+        file_size = os.path.getsize(tmp_path)
+        log(f"   Downloaded {file_size} bytes, sending...")
+        await ctx.reply(
+            f"🎤 Voice message from **{msg.author}** ({file_size / 1024:.0f} KB):",
+            file=discord.File(tmp_path, filename=voice_att.filename)
+        )
+        log("✅ Voice file sent!")
+    except Exception as e:
+        log(f"   Download/send error: {e}")
+        await ctx.reply(f"❌ Error: {e}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 # Run
 if __name__ == "__main__":
     if not TOKEN or TOKEN == "PASTE_YOUR_TOKEN_HERE":
