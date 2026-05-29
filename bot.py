@@ -266,50 +266,53 @@ async def tiktok(ctx, username: str):
 
 @bot.hybrid_command(name="usa", description="Scan a Fameswap screenshot image and look up all TikTok accounts")
 @app_commands.describe(image="Attach the Fameswap screenshot image")
-async def usa(ctx, image: discord.Attachment = None):
-    """Scan a Fameswap image, extract usernames, and look up their TikTok profiles."""
-    # Check for attached image
-    if image is None:
-        if ctx.message.attachments:
-            image = ctx.message.attachments[0]
-        else:
-            await ctx.reply("❌ Please attach a Fameswap screenshot image.")
-            return
-
-    # Validate it's an image
-    ct = (image.content_type or "").lower()
-    if not ct.startswith("image/"):
-        await ctx.reply("❌ That's not an image file. Please attach a screenshot.")
+async def usa(ctx):
+    """Scan Fameswap images and look up all TikTok accounts."""
+    # Collect all image attachments
+    images = []
+    if ctx.message.attachments:
+        images = [a for a in ctx.message.attachments if (a.content_type or "").lower().startswith("image/")]
+    if not images:
+        await ctx.reply("❌ Please attach one or more Fameswap screenshot images.")
         return
 
-    log(f"📸 Fameswap scan requested by {ctx.author}: {image.filename} ({image.size} bytes)")
+    total = len(images)
+    log(f"📸 Fameswap scan requested by {ctx.author} ({total} image{'s' if total > 1 else ''})")
     await ctx.defer()
 
-    tmp_path = tempfile.mktemp(suffix=f"-{image.filename}")
+    # Process all images
+    from fameswap_ocr import parse_fameswap_image
+    from tiktok_lookup import fetch_tiktok_profile
+
+    all_usernames = set()
+    tmp_paths = []
+
     try:
-        # Download the image
-        await image.save(tmp_path)
-        log(f"✅ Image saved to {tmp_path}")
+        for i, img in enumerate(images, 1):
+            tmp_path = tempfile.mktemp(suffix=f"-img{i}-{img.filename}")
+            tmp_paths.append(tmp_path)
+            await img.save(tmp_path)
+            log(f"   Image {i}/{total} saved: {img.filename}")
 
-        # Run OCR + lookups
-        from fameswap_ocr import parse_fameswap_image
-        from tiktok_lookup import fetch_tiktok_profile
+            result = parse_fameswap_image(tmp_path)
+            if result.get('error'):
+                log(f"   ⚠️ OCR error on {img.filename}: {result['error']}")
+                continue
 
-        result = parse_fameswap_image(tmp_path)
-        if result.get('error'):
-            await ctx.reply(f"❌ {result['error']}")
+            for u in result['usernames']:
+                all_usernames.add(u)
+            log(f"   Image {i}/{total}: {result['count']} usernames extracted")
+
+        if not all_usernames:
+            await ctx.reply("❌ No TikTok usernames found in the images. Make sure they're Fameswap screenshots.")
+            log(f"❌ No usernames found in {total} images")
             return
 
-        if result['count'] == 0:
-            await ctx.reply("❌ No TikTok usernames found in that image. Make sure it's a Fameswap screenshot.")
-            log(f"❌ No usernames found in {image.filename}")
-            return
-
-        log(f"   Extracted {result['count']} usernames: {result['usernames']}")
+        log(f"   Total unique usernames: {len(all_usernames)}")
 
         # Look up each account
         profiles = []
-        for u in result['usernames']:
+        for u in sorted(all_usernames):
             data = fetch_tiktok_profile(u)
             if data:
                 data['username'] = u
@@ -325,15 +328,16 @@ async def usa(ctx, image: discord.Attachment = None):
             reply = reply[:1900] + "\n\n... (truncated)"
 
         await ctx.reply(reply)
-        log(f"✅ Fameswap scan results sent ({result['count']} accounts)")
+        log(f"✅ Fameswap scan complete ({len(all_usernames)} accounts from {total} images)")
 
     except Exception as e:
         traceback.print_exc()
         await ctx.reply(f"❌ Error: {str(e)[:200]}")
         log(f"❌ Fameswap scan error: {e}")
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        for p in tmp_paths:
+            if os.path.exists(p):
+                os.remove(p)
 
 
 @bot.hybrid_command(name="ping", description="Check if the bot is alive")
