@@ -264,6 +264,78 @@ async def tiktok(ctx, username: str):
         log(f"❌ TikTok error: {e}")
 
 
+@bot.hybrid_command(name="usa", description="Scan a Fameswap screenshot image and look up all TikTok accounts")
+@app_commands.describe(image="Attach the Fameswap screenshot image")
+async def usa(ctx, image: discord.Attachment = None):
+    """Scan a Fameswap image, extract usernames, and look up their TikTok profiles."""
+    # Check for attached image
+    if image is None:
+        if ctx.message.attachments:
+            image = ctx.message.attachments[0]
+        else:
+            await ctx.reply("❌ Please attach a Fameswap screenshot image.")
+            return
+
+    # Validate it's an image
+    ct = (image.content_type or "").lower()
+    if not ct.startswith("image/"):
+        await ctx.reply("❌ That's not an image file. Please attach a screenshot.")
+        return
+
+    log(f"📸 Fameswap scan requested by {ctx.author}: {image.filename} ({image.size} bytes)")
+    await ctx.defer()
+
+    tmp_path = tempfile.mktemp(suffix=f"-{image.filename}")
+    try:
+        # Download the image
+        await image.save(tmp_path)
+        log(f"✅ Image saved to {tmp_path}")
+
+        # Run OCR + lookups
+        from fameswap_ocr import parse_fameswap_image
+        from tiktok_lookup import fetch_tiktok_profile
+
+        result = parse_fameswap_image(tmp_path)
+        if result.get('error'):
+            await ctx.reply(f"❌ {result['error']}")
+            return
+
+        if result['count'] == 0:
+            await ctx.reply("❌ No TikTok usernames found in that image. Make sure it's a Fameswap screenshot.")
+            log(f"❌ No usernames found in {image.filename}")
+            return
+
+        log(f"   Extracted {result['count']} usernames: {result['usernames']}")
+
+        # Look up each account
+        profiles = []
+        for u in result['usernames']:
+            data = fetch_tiktok_profile(u)
+            if data:
+                data['username'] = u
+            else:
+                data = {'username': u, 'error': 'Not found or inaccessible'}
+            profiles.append(data)
+
+        from fameswap_ocr import format_fameswap_results
+        reply = format_fameswap_results(profiles)
+
+        # Truncate if too long (Discord 2000 char limit)
+        if len(reply) > 1900:
+            reply = reply[:1900] + "\n\n... (truncated)"
+
+        await ctx.reply(reply)
+        log(f"✅ Fameswap scan results sent ({result['count']} accounts)")
+
+    except Exception as e:
+        traceback.print_exc()
+        await ctx.reply(f"❌ Error: {str(e)[:200]}")
+        log(f"❌ Fameswap scan error: {e}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 @bot.hybrid_command(name="ping", description="Check if the bot is alive")
 async def ping(ctx):
     await ctx.send("pong!")

@@ -4,6 +4,7 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     file \
+    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -15,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # App code
 COPY bot.py .
 COPY tiktok_lookup.py .
+COPY fameswap_ocr.py .
 COPY .env.example .env.example
 
 # Railway provides DISCORD_BOT_TOKEN via env var
