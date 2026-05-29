@@ -222,38 +222,51 @@ def fetch_tiktok_profile(username):
 def format_profile(data):
     """Format profile data as a Discord-friendly string."""
     if not data:
-        return "❌ User not found or inaccessible."
+        return "User not found or inaccessible."
 
     region_code = data.get('region', 'N/A').upper()
     country = COUNTRY_CODES.get(region_code, region_code)
     stats = data.get('stats', {})
 
     lines = [
-        f"**{data.get('nickname', 'N/A')}**",
-        f"@{data.get('username', 'N/A')}",
+        "**" + data.get('nickname', 'N/A') + "**",
+        "@" + data.get('username', 'N/A'),
         "",
-        f"{get_flag(region_code)} {country} ({region_code})",
+        "Region: " + get_flag(region_code) + " " + country + " (" + region_code + ")",
         "",
-        # Locked region (same as region if not separately available)
-        f"Locked Region: {get_flag(region_code)}",
-        "",
-        f"{country} ({region_code})",
-        "",
-        f"Language: {LANGUAGE_NAMES.get(data.get('language', '').lower(), data.get('language', 'N/A'))}",
-        f"About: {data.get('about', 'User has no about')[:200]}",
-        "",
-        "**STATS**",
-        f"👥 Followers: {stats.get('followers', '0')}",
-        f"👣 Following: {stats.get('following', '0')}",
-        f"❤️ Hearts: {stats.get('hearts', '0')}",
-        f"🎬 Videos: {stats.get('videos', '0')}",
-        f"🤝 Friends: {stats.get('friends', '0')}",
     ]
 
-    if data.get('bioLink'):
-        lines.append(f"🔗 Bio Link: {data['bioLink']}")
+    # Locked region indicator
+    locked_code = data.get('locked_region', '').upper()
+    if locked_code and locked_code != region_code:
+        locked_country = COUNTRY_CODES.get(locked_code, locked_code)
+        lines.append("🔒 Locked Region: " + get_flag(locked_code) + " " + locked_country + " (" + locked_code + ") ❌ Different")
+    elif locked_code:
+        locked_country = COUNTRY_CODES.get(locked_code, locked_code)
+        lines.append("🔒 Locked Region: " + get_flag(locked_code) + " " + locked_country + " (" + locked_code + ") ✅ Same")
+    else:
+        lines.append("🔒 Locked Region: " + get_flag(region_code) + " " + country + " (" + region_code + ") ✅ Same")
 
-    lines.append(f"📅 Created: {data.get('accountCreated', 'N/A')}")
+    lines.append("")
+    lang = data.get('language', '')
+    lang_name = LANGUAGE_NAMES.get(lang.lower(), lang if lang else 'N/A')
+    lines.append("Language: " + lang_name)
+    about = data.get('about', 'User has no about')
+    if len(about) > 200:
+        about = about[:200]
+    lines.append("About: " + about)
+    lines.append("")
+    lines.append("**STATS**")
+    lines.append("👥 Followers: " + stats.get('followers', '0'))
+    lines.append("👣 Following: " + stats.get('following', '0'))
+    lines.append("❤️ Hearts: " + stats.get('hearts', '0'))
+    lines.append("🎬 Videos: " + stats.get('videos', '0'))
+    lines.append("🤝 Friends: " + stats.get('friends', '0'))
+
+    if data.get('bioLink'):
+        lines.append("🔗 Bio Link: " + data['bioLink'])
+
+    lines.append("📅 Created: " + data.get('accountCreated', 'N/A'))
 
     return "\n".join(lines)
 
