@@ -157,9 +157,12 @@ async def transcribe_and_reply(message, attachment):
         file_size = os.path.getsize(audio_path)
         log(f"✅ Downloaded {file_size} bytes to {audio_path}")
 
-        # 2. Check it's a real audio file
-        file_result = subprocess.run(["file", audio_path], capture_output=True, text=True)
-        log(f"📁 file command: {file_result.stdout.strip()}")
+        # 2. Check it's a real audio file (non-fatal if `file` command missing)
+        try:
+            file_result = subprocess.run(["file", audio_path], capture_output=True, text=True, timeout=5)
+            log(f"📁 file command: {file_result.stdout.strip()}")
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            log(f"📁 file command skipped ({e})")
 
         # 3. Check ffmpeg can parse it
         probe = subprocess.run(
