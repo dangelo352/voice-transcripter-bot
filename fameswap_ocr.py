@@ -118,58 +118,60 @@ def format_fameswap_results(results_list):
     us_accounts = []
     non_us_accounts = []
     errors = []
+    # Skip failed lookups silently in the list (track count only)
+    errors = len([d for d in results_list if d.get('error')])
+    valid = [d for d in results_list if not d.get('error')]
+    us_accounts = [d for d in valid if d.get('region') == 'US']
+    non_us = [d for d in valid if d.get('region', '') != 'US']
 
-    for data in results_list:
-        if data.get('error'):
-            errors.append(data)
-            continue
-        region = data.get('region', '').upper()
-        if region == 'US':
-            us_accounts.append(data)
-        else:
-            non_us_accounts.append(data)
-
-    def fmt_account(i, data):
-        nickname = data.get('nickname', 'N/A')
-        username = data.get('username', 'unknown')
-        region = data.get('region', 'N/A')
-        stats = data.get('stats', {})
+    def fmt_account(i, d):
+        nickname = d.get('nickname', 'N/A')
+        username = d.get('username', 'unknown')
+        region = d.get('region', '')
+        stats = d.get('stats', {})
         flag = ""
         if region and len(region) == 2:
             flag = (chr(ord(region[0].upper()) - ord('A') + 0x1F1E6) +
                     chr(ord(region[1].upper()) - ord('A') + 0x1F1E6))
         followers = stats.get('followers', '?')
         hearts = stats.get('hearts', '?')
-        videos = stats.get('videos', '?')
-        about = data.get('about', '')
-        if about and len(about) > 60:
-            about = about[:60] + '...'
-
-        line = f"{i}. {flag} **{nickname}** @{username}"
-        line += f"\n    👥 {followers}  ❤️ {hearts}  🎬 {videos}"
-        if region != 'US' and region != 'N/A':
-            line += f"  🌍 {region}"
+        about = d.get('about', '')
         if about:
-            line += f"\n    _{about}_"
+            about = about.replace('\n', ' ').replace('\r', '').strip()[:40]
+            if len(about) == 40:
+                about = about[:37] + '...'
+        line = f"  {flag} **{nickname}** (@{username}) — 👥 {followers} ❤️ {hearts}"
+        if about:
+            line += f" · _{about}_"
         return line
 
-    lines = ["**🇺🇸 US Accounts**", ""]
-    for i, data in enumerate(us_accounts, 1):
-        lines.append(fmt_account(i, data))
-
-    if non_us_accounts:
+    lines = []
+    if us_accounts:
+        lines.append(f"**🇺🇸 US Accounts**")
+        for i, d in enumerate(us_accounts, 1):
+            lines.append(fmt_account(i, d))
         lines.append("")
-        lines.append(f"**🌍 Other ({len(non_us_accounts)})**")
+
+    if non_us:
+        lines.append(f"**🌍 Others**")
+        for i, d in enumerate(non_us, 1):
+            lines.append(fmt_account(i, d))
         lines.append("")
-        for i, data in enumerate(non_us_accounts, 1):
-            lines.append(fmt_account(i, data))
 
-    for data in errors:
-        lines.append(f"❌ @{data['username']} — {data['error']}")
+    # Single clean summary line
+    total = len(valid)
+    parts = [f"📊 **{total}** accounts"]
+    if len(us_accounts) == total:
+        parts.append("all US")
+    elif us_accounts:
+        parts.append(f"**{len(us_accounts)}** US")
+    if non_us:
+        parts.append(f"**{len(non_us)}** other")
+    if errors:
+        parts.append(f"**{errors}** failed OCR")
+    lines.append(" · ".join(parts))
 
-    lines.append("")
-    lines.append(f"📊 {len(us_accounts)} US · {len(non_us_accounts)} other · {len(errors)} errors")
-    return "\n".join(lines)
+    return "\n".join(lines).strip()
 
 
 if __name__ == "__main__":
