@@ -111,17 +111,25 @@ def parse_fameswap_image(image_path):
 
 
 def format_fameswap_results(results_list):
-    """Format TikTok profile results for Discord output."""
+    """Format TikTok profile results for Discord output, US accounts first."""
     if not results_list:
         return "No accounts found in image."
 
-    lines = ["**Fameswap Scan**", ""]
+    us_accounts = []
+    non_us_accounts = []
+    errors = []
 
-    for i, data in enumerate(results_list, 1):
+    for data in results_list:
         if data.get('error'):
-            lines.append(f"{i}.  {data['username']} - {data['error']}")
+            errors.append(data)
             continue
+        region = data.get('region', '').upper()
+        if region == 'US':
+            us_accounts.append(data)
+        else:
+            non_us_accounts.append(data)
 
+    def fmt_account(i, data):
         nickname = data.get('nickname', 'N/A')
         username = data.get('username', 'unknown')
         region = data.get('region', 'N/A')
@@ -130,7 +138,6 @@ def format_fameswap_results(results_list):
         if region and len(region) == 2:
             flag = (chr(ord(region[0].upper()) - ord('A') + 0x1F1E6) +
                     chr(ord(region[1].upper()) - ord('A') + 0x1F1E6))
-
         followers = stats.get('followers', '?')
         hearts = stats.get('hearts', '?')
         videos = stats.get('videos', '?')
@@ -139,13 +146,29 @@ def format_fameswap_results(results_list):
             about = about[:60] + '...'
 
         line = f"{i}. {flag} **{nickname}** @{username}"
-        line += f"\n    Followers: {followers}  Hearts: {hearts}  Videos: {videos}"
+        line += f"\n    👥 {followers}  ❤️ {hearts}  🎬 {videos}"
+        if region != 'US' and region != 'N/A':
+            line += f"  🌍 {region}"
         if about:
             line += f"\n    _{about}_"
-        lines.append(line)
+        return line
+
+    lines = ["**🇺🇸 US Accounts**", ""]
+    for i, data in enumerate(us_accounts, 1):
+        lines.append(fmt_account(i, data))
+
+    if non_us_accounts:
+        lines.append("")
+        lines.append(f"**🌍 Other ({len(non_us_accounts)})**")
+        lines.append("")
+        for i, data in enumerate(non_us_accounts, 1):
+            lines.append(fmt_account(i, data))
+
+    for data in errors:
+        lines.append(f"❌ @{data['username']} — {data['error']}")
 
     lines.append("")
-    lines.append(f"Scanned {len(results_list)} accounts")
+    lines.append(f"📊 {len(us_accounts)} US · {len(non_us_accounts)} other · {len(errors)} errors")
     return "\n".join(lines)
 
 
