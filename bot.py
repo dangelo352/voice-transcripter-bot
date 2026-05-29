@@ -29,7 +29,14 @@ WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")  # float16
 LOG_FILE = os.path.join(os.path.dirname(__file__), "bot.log")
 
 # Import faster-whisper — will be available via requirements.txt
-from faster_whisper import WhisperModel
+# Made optional — if not installed, voice transcription won't work
+# but slash commands (tiktok, usa, ping, dlvoice) will still function
+try:
+    from faster_whisper import WhisperModel
+    HAS_WHISPER = True
+except ImportError:
+    WhisperModel = None
+    HAS_WHISPER = False
 
 # Initialize model globally (lazy-loaded on first use)
 _model = None
@@ -37,6 +44,9 @@ _model = None
 def get_model():
     global _model
     if _model is None:
+        if not HAS_WHISPER:
+            log("⚠️ faster-whisper not installed — install with 'pip install faster-whisper'")
+            return None
         log(f"🎤 Loading faster-whisper model '{WHISPER_MODEL_SIZE}' on {WHISPER_DEVICE} ({WHISPER_COMPUTE_TYPE})...")
         _model = WhisperModel(
             WHISPER_MODEL_SIZE,
