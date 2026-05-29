@@ -28,15 +28,15 @@ WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")  # float16
 
 LOG_FILE = os.path.join(os.path.dirname(__file__), "bot.log")
 
-# Import faster-whisper — will be available via requirements.txt
-# Made optional — if not installed, voice transcription won't work
-# but slash commands (tiktok, usa, ping, dlvoice) will still function
+# faster-whisper is optional — voice transcribing won't work without it
+# but all slash commands will function normally
+WhisperModel = None
+HAS_WHISPER = False
 try:
     from faster_whisper import WhisperModel
     HAS_WHISPER = True
-except ImportError:
-    WhisperModel = None
-    HAS_WHISPER = False
+except Exception:
+    pass
 
 # Initialize model globally (lazy-loaded on first use)
 _model = None
@@ -117,6 +117,9 @@ async def on_ready():
 
 async def _preload_model():
     """Pre-load whisper model in background so first message doesn't lag."""
+    if not HAS_WHISPER:
+        log("ℹ️ faster-whisper not available, voice transcription disabled")
+        return
     log("⏳ Background-loading whisper model...")
     try:
         get_model()
