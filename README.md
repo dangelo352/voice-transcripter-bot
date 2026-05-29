@@ -1,51 +1,63 @@
 # Voice Transcripter Bot 🎤
 
-A Discord bot that transcribes voice messages using [whisper.cpp](https://github.com/ggerganov/whisper.cpp). Fast, local, private — runs entirely on your machine.
+A Discord bot that transcribes voice messages using **faster-whisper**. Fast, local, private — runs on Railway or your own machine.
 
 ## Features
 
 - **Auto-transcribe** — any voice message in any channel/server gets transcribed instantly
 - **Trash button** 🗑️ — click to delete both the voice message and the transcript (owner-only)
-- **Local whisper.cpp** — no cloud API, no costs, no data leaving your machine
-- **Auto-restart** — if the bot crashes, it comes back in 3 seconds
-- **Detailed logging** — every step logged to `bot.log`
+- **faster-whisper** — optimized CPU inference with CTranslate2, no GPU required
+- **Auto-restart** — if the bot crashes, it comes back (Railway handles this automatically)
+- **Detailed logging** — every step logged to stdout and `bot.log`
 
-## Requirements
+## Deploy on Railway (recommended)
 
-- macOS (Apple Silicon) or Linux
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) installed (`whisper-cli` in PATH)
-- A whisper model (`ggml-small.bin`, `ggml-medium.en.bin`, etc.)
-- ffmpeg
-- Python 3.9+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/dangelo352/voice-transcripter-bot)
 
-## Setup
+Or via the CLI:
 
 ```bash
-# Clone or download
+railway login
+railway init
+railway deploy
+```
+
+Then set your environment variable:
+
+```
+DISCORD_BOT_TOKEN=your_bot_token_here
+```
+
+### Deploy Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DISCORD_BOT_TOKEN` | (required) | Your Discord bot token |
+| `WHISPER_MODEL_SIZE` | `medium` | Model size: tiny, base, small, medium, large-v3 |
+| `WHISPER_DEVICE` | `cpu` | Device: cpu or cuda |
+| `WHISPER_COMPUTE_TYPE` | `int8` | Compute: int8, int8_float16, float16 |
+
+## Local Setup
+
+```bash
+# Clone
+git clone https://github.com/dangelo352/voice-transcripter-bot
 cd voice-transcripter-bot
 
-# Create virtual environment
+# Virtual environment
 python3 -m venv venv
 source venv/bin/activate
-pip install discord.py python-dotenv
+pip install -r requirements.txt
 
-# Copy and fill in your bot token
+# Configure
 cp .env.example .env
 # Edit .env with your Discord bot token
 
-# Make sure whisper-cli and a model are available
-# e.g. via Homebrew: brew install whisper-cpp
-# Download model: curl -LO https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
-
 # Run
-./run.sh
+python bot.py
 ```
 
-## Config
-
-Edit `bot.py` to change:
-- `WHISPER_MODEL` — path to your whisper.cpp model file
-- `WHISPER_BIN` — path to `whisper-cli` binary
+Requirements: Python 3.9+, ffmpeg (brew install ffmpeg)
 
 ## Invite to Server
 
@@ -65,6 +77,6 @@ Requires **Send Messages** + **Manage Messages** permissions (for the trash butt
 ## Tech Stack
 
 - [discord.py](https://github.com/Rapptz/discord-py) — Discord API
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) — local speech-to-text
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — speech-to-text (CTranslate2)
 - ffmpeg — audio conversion
 - Python 3

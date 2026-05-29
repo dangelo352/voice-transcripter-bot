@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Discord Voice Transcripter Bot
-Transcribes voice messages using whisper.cpp and responds with text.
+Transcribes voice messages using faster-whisper and responds with text.
 """
 import os
 import tempfile
@@ -20,12 +20,31 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
-WHISPER_MODEL = os.path.expanduser("~/video-dub-pipeline/models/ggml-medium.en.bin")
-# Fall back to small if medium not downloaded yet
-if not os.path.exists(WHISPER_MODEL):
-    WHISPER_MODEL = os.path.expanduser("~/video-dub-pipeline/models/ggml-small.bin")
-WHISPER_BIN = "/opt/homebrew/bin/whisper-cli"
+
+# faster-whisper config
+WHISPER_MODEL_SIZE = os.environ.get("WHISPER_MODEL_SIZE", "medium")
+WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "cpu")  # cpu or cuda
+WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")  # float16, int8_float16, int8
+
 LOG_FILE = os.path.join(os.path.dirname(__file__), "bot.log")
+
+# Import faster-whisper — will be available via requirements.txt
+from faster_whisper import WhisperModel
+
+# Initialize model globally (lazy-loaded on first use)
+_model = None
+
+def get_model():
+    global _model
+    if _model is None:
+        log(f"🎤 Loading faster-whisper model '{WHISPER_MODEL_SIZE}' on {WHISPER_DEVICE} ({WHISPER_COMPUTE_TYPE})...")
+        _model = WhisperModel(
+            WHISPER_MODEL_SIZE,
+            device=WHISPER_DEVICE,
+            compute_type=WHISPER_COMPUTE_TYPE,
+        )
+        log("✅ Whisper model loaded")
+    return _model
 
 
 def log(msg):
@@ -81,6 +100,18 @@ async def on_ready():
     await bot.tree.sync()
     log(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
     log("📡 Listening for voice messages...")
+    # Pre-load the model so first transcription is fast
+    import asyncio
+    asyncio.create_task(_preload_model())
+
+
+async def _preload_model():
+    """Pre-load whisper model in background so first message doesn't lag."""
+    log("⏳ Background-loading whisper model...")
+    try:
+        get_model()
+    except Exception as e:
+        log(f"⚠️ Model preload failed (will load on demand): {e}")
 
 
 @bot.event
@@ -95,7 +126,7 @@ async def on_message(message):
         if hasattr(a, "flags") and a.flags:
             log(f"     flags.is_voice_message={a.flags.is_voice_message}")
 
-    # Check for voice message attachments - any audio attachment
+    # Check for voice message attachments
     for attachment in message.attachments:
         ct = (attachment.content_type or "").lower()
         is_voice = (
@@ -114,7 +145,7 @@ async def on_message(message):
 
 
 async def transcribe_and_reply(message, attachment):
-    """Download voice message, transcribe with whisper.cpp, reply with text."""
+    """Download voice message, transcribe with faster-whisper, reply with text."""
     tmp_dir = tempfile.mkdtemp()
     audio_path = os.path.join(tmp_dir, "voice.ogg")
     wav_path = os.path.join(tmp_dir, "voice.wav")
@@ -153,66 +184,35 @@ async def transcribe_and_reply(message, attachment):
             return
         log(f"✅ WAV created: {os.path.getsize(wav_path)} bytes")
 
-        # 5. Verify whisper binary exists
-        if not os.path.exists(WHISPER_BIN):
-            log(f"❌ whisper-cli not found at {WHISPER_BIN}")
-            await message.reply("❌ whisper-cli binary missing on server")
-            return
-        if not os.path.exists(WHISPER_MODEL):
-            log(f"❌ Model not found at {WHISPER_MODEL}")
-            await message.reply("❌ Whisper model missing on server")
-            return
+        # 5. Transcribe with faster-whisper
+        log("🎤 Transcribing with faster-whisper...")
+        model = get_model()
 
-        # 6. Transcribe with whisper.cpp
-        log("🎤 Transcribing with whisper.cpp...")
-        # Use 8 threads on M4, explicit English, relaxed thresholds for accuracy
-        is_en_model = "en." in os.path.basename(WHISPER_MODEL)
-        result = subprocess.run([
-            WHISPER_BIN, "-m", WHISPER_MODEL,
-            "-f", wav_path,
-            "-t", "8",
-            "-l", "en" if is_en_model else "auto",
-            "-nth", "0.30",      # lower no-speech threshold (default 0.60)
-            "-lpt", "-0.50",     # less strict logprob threshold
-            "-et", "3.00",       # more permissive entropy threshold
-            "-sow",              # split on word for cleaner output
-            "-oj",
-            "-of", os.path.join(tmp_dir, "out"),
-        ], capture_output=True, text=True, timeout=120)
+        # Run in threadpool to avoid blocking the event loop
+        import asyncio
+        loop = asyncio.get_event_loop()
 
-        log(f"whisper exit code: {result.returncode}")
-        if result.stderr:
-            log(f"whisper stderr (first 300): {result.stderr[:300]}")
+        def do_transcribe():
+            segments, info = model.transcribe(
+                wav_path,
+                language="en",
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters=dict(
+                    threshold=0.5,
+                    min_speech_duration_ms=500,
+                    min_silence_duration_ms=300,
+                ),
+            )
+            text_parts = []
+            for seg in segments:
+                text_parts.append(seg.text.strip())
+            return " ".join(text_parts)
 
-        if result.returncode != 0:
-            err = result.stderr[:500] if result.stderr else f"exit code {result.returncode}"
-            await message.reply(f"❌ Whisper error: {err}")
-            return
+        text = await loop.run_in_executor(None, do_transcribe)
+        log(f"📝 Transcribed: {len(text)} chars")
 
-        # 7. Parse transcript
-        json_path = os.path.join(tmp_dir, "out.json")
-        text = ""
-        if os.path.exists(json_path):
-            with open(json_path, "r") as f:
-                raw = f.read()
-            log(f"📄 JSON output size: {len(raw)} chars")
-            data = json.loads(raw)
-            # whisper-cli -oj output uses "transcription" array, not flat "text"
-            transcription = data.get("transcription", [])
-            seg_count = len(transcription)
-            if transcription:
-                texts = [seg.get("text", "").strip() for seg in transcription]
-                text = " ".join(t for t in texts if t)
-            else:
-                # Fallback for other whisper formats
-                text = data.get("text", "").strip()
-            log(f"📝 Transcribed: {len(text)} chars, {seg_count} segs")
-        else:
-            log(f"❌ No out.json found at {json_path}")
-            files = os.listdir(tmp_dir)
-            log(f"   Files in tmpdir: {files}")
-
-        # 8. Reply with transcript + trash button
+        # 6. Reply with transcript + trash button
         if text:
             view = TrashView(message)
             await message.reply(f"📝 **Transcript:**\n{text}", view=view)
@@ -248,10 +248,8 @@ async def dlvoice(ctx, link: str):
     log(f"📥 dlvoice requested by {ctx.author}: {link}")
 
     # Parse Discord message link
-    # Format: https://discord.com/channels/guild_id/@me/channel_id/message_id
     try:
         parts = link.strip().split("/")
-        # Find the channel_id and message_id at the end
         message_id = int(parts[-1])
         channel_id = int(parts[-2])
     except (ValueError, IndexError):
