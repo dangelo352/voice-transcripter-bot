@@ -65,7 +65,21 @@ COUNTRY_CODES = {
     "UZ": "Uzbekistan", "VU": "Vanuatu", "VE": "Venezuela", "VN": "Vietnam",
     "VG": "Virgin Islands (British)", "VI": "Virgin Islands (U.S.)", "WF": "Wallis and Futuna",
     "EH": "Western Sahara", "YE": "Yemen", "ZM": "Zambia", "ZW": "Zimbabwe"
-}
+ }
+
+
+# Language code to full name mapping
+LANGUAGE_NAMES = {
+    "en": "English", "es": "Spanish", "fr": "French", "de": "German",
+ "it": "Italian", "pt": "Portuguese", "ru": "Russian", "ja": "Japanese",
+ "ko": "Korean", "zh": "Chinese", "ar": "Arabic", "hi": "Hindi",
+ "tr": "Turkish", "nl": "Dutch", "pl": "Polish", "sv": "Swedish",
+ "da": "Danish", "fi": "Finnish", "no": "Norwegian", "cs": "Czech",
+ "ro": "Romanian", "hu": "Hungarian", "el": "Greek", "he": "Hebrew",
+ "th": "Thai", "vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
+ "tl": "Filipino", "bn": "Bengali", "ta": "Tamil", "te": "Telugu",
+ "mr": "Marathi", "ur": "Urdu", "sw": "Swahili",
+ }
 
 
 def extract_username_from_input(input_str):
@@ -217,9 +231,15 @@ def format_profile(data):
     lines = [
         f"**{data.get('nickname', 'N/A')}**",
         f"@{data.get('username', 'N/A')}",
+        "",
         f"{get_flag(region_code)} {country} ({region_code})",
         "",
-        f"Language: {data.get('language', 'N/A')}",
+        # Locked region (same as region if not separately available)
+        f"Locked Region: {get_flag(region_code)}",
+        "",
+        f"{country} ({region_code})",
+        "",
+        f"Language: {LANGUAGE_NAMES.get(data.get('language', '').lower(), data.get('language', 'N/A'))}",
         f"About: {data.get('about', 'User has no about')[:200]}",
         "",
         "**STATS**",
