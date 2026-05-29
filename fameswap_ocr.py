@@ -9,14 +9,18 @@ import subprocess
 
 
 def ocr_image(image_path):
-    """Run tesseract OCR on an image and return extracted text."""
+    """Run tesseract OCR on an image and return extracted text.
+    Returns None if tesseract is not installed."""
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"Image not found: {image_path}")
-    result = subprocess.run(
-        ["tesseract", image_path, "stdout"],
-        capture_output=True, text=True, timeout=30
-    )
-    return result.stdout.strip()
+    try:
+        result = subprocess.run(
+            ["tesseract", image_path, "stdout"],
+            capture_output=True, text=True, timeout=30
+        )
+        return result.stdout.strip()
+    except FileNotFoundError:
+        return None
 
 
 def is_valid_tiktok_username(s):
@@ -96,11 +100,15 @@ def extract_usernames_from_text(text):
 
 
 def parse_fameswap_image(image_path):
-    """Full pipeline: OCR image -> extract usernames."""
+    """Full pipeline: OCR image -> extract usernames.
+    Returns None if OCR is not available (tesseract not installed)."""
     if not os.path.exists(image_path):
         return {'error': f'File not found: {image_path}', 'usernames': [], 'count': 0}
 
     raw_text = ocr_image(image_path)
+    if raw_text is None:
+        return {'error': 'Tesseract OCR not available', 'usernames': [], 'count': 0}
+    
     usernames = extract_usernames_from_text(raw_text)
 
     return {
