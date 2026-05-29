@@ -236,6 +236,34 @@ async def transcribe_and_reply(message, attachment):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+@bot.hybrid_command(name="tiktok", description="Look up a TikTok user's public profile")
+@app_commands.describe(username="TikTok username (with or without @)")
+async def tiktok(ctx, username: str):
+    """Look up a TikTok user's public profile info."""
+    log(f"📱 TikTok lookup requested by {ctx.author}: {username}")
+    await ctx.defer()
+
+    try:
+        from tiktok_lookup import fetch_tiktok_profile, format_profile, extract_username_from_input
+        clean = extract_username_from_input(username)
+        if not clean:
+            await ctx.reply("❌ Invalid username.")
+            return
+
+        log(f"   Looking up @{clean}")
+        data = fetch_tiktok_profile(clean)
+        if data:
+            await ctx.reply(format_profile(data))
+            log(f"✅ TikTok profile sent for @{clean}")
+        else:
+            await ctx.reply(f"❌ Couldn't find @{clean} — account may be private or doesn't exist.")
+            log(f"❌ TikTok lookup failed for @{clean}")
+    except Exception as e:
+        traceback.print_exc()
+        await ctx.reply(f"❌ Error: {str(e)[:200]}")
+        log(f"❌ TikTok error: {e}")
+
+
 @bot.hybrid_command(name="ping", description="Check if the bot is alive")
 async def ping(ctx):
     await ctx.send("pong!")

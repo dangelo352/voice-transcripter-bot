@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # App code
 COPY bot.py .
+COPY tiktok_lookup.py .
 COPY .env.example .env.example
 
 # Railway provides DISCORD_BOT_TOKEN via env var
