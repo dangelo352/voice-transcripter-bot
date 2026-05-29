@@ -111,67 +111,81 @@ def parse_fameswap_image(image_path):
 
 
 def format_fameswap_results(results_list):
-    """Format TikTok profile results for Discord output, US accounts first."""
+    """Format TikTok profile results like /tiktok — beautiful per-account blocks."""
     if not results_list:
         return "No accounts found in image."
 
-    us_accounts = []
-    non_us_accounts = []
-    errors = []
-    # Skip failed lookups silently in the list (track count only)
     errors = len([d for d in results_list if d.get('error')])
     valid = [d for d in results_list if not d.get('error')]
-    us_accounts = [d for d in valid if d.get('region') == 'US']
+    us = [d for d in valid if d.get('region') == 'US']
     non_us = [d for d in valid if d.get('region', '') != 'US']
 
-    def fmt_account(i, d):
-        nickname = d.get('nickname', 'N/A')
-        username = d.get('username', 'unknown')
-        region = d.get('region', '')
+    # Collect profile blocks using format_profile from tiktok_lookup
+    # but with a compact header line instead of the full format
+    blocks = []
+    section_num = 1
+
+    def profile_compact(d):
+        """Build a compact profile block similar to /tiktok."""
+        flag = get_flag(d.get('region', ''))
+        nick = d.get('nickname', 'N/A')
+        user = d.get('username', 'unknown')
         stats = d.get('stats', {})
-        flag = ""
-        if region and len(region) == 2:
-            flag = (chr(ord(region[0].upper()) - ord('A') + 0x1F1E6) +
-                    chr(ord(region[1].upper()) - ord('A') + 0x1F1E6))
-        followers = stats.get('followers', '?')
-        hearts = stats.get('hearts', '?')
         about = d.get('about', '')
-        if about:
-            about = about.replace('\n', ' ').replace('\r', '').strip()[:40]
-            if len(about) == 40:
-                about = about[:37] + '...'
-        line = f"  {flag} **{nickname}** (@{username}) — 👥 {followers} ❤️ {hearts}"
-        if about:
-            line += f" · _{about}_"
-        return line
+        created = d.get('accountCreated', '')
 
-    lines = []
-    if us_accounts:
-        lines.append(f"**🇺🇸 US Accounts**")
-        for i, d in enumerate(us_accounts, 1):
-            lines.append(fmt_account(i, d))
+        lines = []
+        # Compact listing number with flag and nickname
+        lines.append(f"**{nick}**")
+        lines.append(f"@{user} {flag}")
         lines.append("")
+        lines.append(f"👥 Followers: {stats.get('followers', '0')}")
+        lines.append(f"❤️ Hearts: {stats.get('hearts', '0')}")
+        if about:
+            # Truncate bio for compact view
+            about_line = about.replace('\n', ' ').replace('\r', '')[:100]
+            if len(about_line) == 100:
+                about_line = about_line[:97] + '...'
+            lines.append(f"📝 {about_line}")
+        if created:
+            lines.append(f"📅 Created: {created}")
+        return "\n".join(lines)
 
-    if non_us:
-        lines.append(f"**🌍 Others**")
-        for i, d in enumerate(non_us, 1):
-            lines.append(fmt_account(i, d))
-        lines.append("")
+    blocks.append("**📸 Fameswap Scan**\n")
 
-    # Single clean summary line
-    total = len(valid)
-    parts = [f"📊 **{total}** accounts"]
-    if len(us_accounts) == total:
-        parts.append("all US")
-    elif us_accounts:
-        parts.append(f"**{len(us_accounts)}** US")
+    # US accounts first
+    if us:
+        blocks.append("**🇺🇸 United States**\n")
+        for d in us:
+            blocks.append(profile_compact(d))
+            blocks.append("")
+        blocks.append("")
+
+    # Non-US
     if non_us:
-        parts.append(f"**{len(non_us)}** other")
+        blocks.append("**🌍 Other Countries**\n")
+        for d in non_us:
+            blocks.append(profile_compact(d))
+            blocks.append("")
+        blocks.append("")
+
+    # Summary
+    stats_line = f"**📊 {len(valid)}** accounts"
+    if us:
+        stats_line += f" · **{len(us)}** US"
+    if non_us:
+        stats_line += f" · **{len(non_us)}** other"
     if errors:
-        parts.append(f"**{errors}** failed OCR")
-    lines.append(" · ".join(parts))
+        stats_line += f" · **{errors}** lookup failed"
+    blocks.append(stats_line)
 
-    return "\n".join(lines).strip()
+    return "\n".join(blocks).strip()
+
+def get_flag(region_code):
+    if not region_code or len(region_code) != 2:
+        return ""
+    code = region_code.upper()
+    return chr(ord(code[0]) - ord('A') + 0x1F1E6) + chr(ord(code[1]) - ord('A') + 0x1F1E6)
 
 
 if __name__ == "__main__":
